@@ -1,20 +1,17 @@
-// src/services/metals/metals.api.ts
-
 export type MetalCode = "xau" | "xag" | "xpt" | "xpd";
 export type QuoteCode = "UAH" | "USD" | "EUR";
 
 export type SeriesPoint = { t: number; v: number };
 
-// ✅ ЛОКАЛЬНО: ключ можна “палити” прямо тут
-// Встав свій ключ:
-const API_KEY = "29edff55-53f4-45c5-919d-6e5573e1a52a";
+// Для Vite/Netlify ключ беремо з env
+const API_KEY = import.meta.env.VITE_GOLD_API_KEY as string;
 
-// Працюємо через Vite proxy: /metals-api -> https://metals-api.com
-const BASE = "/metals-api/api";
+// ВАЖЛИВО: абсолютний URL, не /metals-api/api
+const BASE = "https://metals-api.com/api";
 
 function assertKey() {
-  if (!API_KEY || API_KEY === "29edff55-53f4-45c5-919d-6e5573e1a52a") {
-    throw new Error("METALS API: встав ключ у metals.api.ts (API_KEY).");
+  if (!API_KEY || !String(API_KEY).trim()) {
+    throw new Error("METALS API: відсутній VITE_GOLD_API_KEY у .env.local / Netlify env.");
   }
 }
 
@@ -32,7 +29,7 @@ function clampDaysBack(daysBack: number) {
   return Math.max(1, Math.min(366, n));
 }
 
-function normalizeQuote(q: string) {
+function normalizeQuote(q: string): QuoteCode {
   const u = String(q || "UAH").toUpperCase();
   if (u === "USD") return "USD";
   if (u === "EUR") return "EUR";
@@ -50,10 +47,12 @@ function mapMetalToSymbol(metal: string) {
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal });
+
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`METALS API error: ${res.status}${text ? " · " + text : ""}`);
   }
+
   return (await res.json()) as T;
 }
 
@@ -100,6 +99,7 @@ export async function fetchMetalSeries(opts: {
 
   const end = new Date();
   end.setHours(12, 0, 0, 0);
+
   const start = new Date(end);
   start.setDate(end.getDate() - (daysBack - 1));
 
