@@ -1,4 +1,4 @@
-import { Route, type RouteObject } from "react-router-dom";
+import type { RouteObject } from "react-router-dom";
 import AppLayout from "../components/layout/AppLayout";
 import LoginPage from "../pages/LoginPage";
 import DashboardPage from "../pages/DashboardPage";
@@ -12,24 +12,18 @@ import MetalAssetPage from "../pages/MetalAssetPage";
 
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
-
   {
     path: "/",
     element: <AppLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
-
-
       { path: "crypto", element: <CryptoMarketPage /> },
       { path: "crypto/:symbol", element: <CryptoAssetPage /> },
-      { path: "/fx/:base", element: <FxAssetPage /> },
-
       { path: "fx", element: <FxPage /> },
+      { path: "fx/:base", element: <FxAssetPage /> },
       { path: "metals", element: <MetalsPage /> },
       { path: "metals/:metal", element: <MetalAssetPage /> },
-
     ],
   },
-
   { path: "*", element: <NotFoundPage /> },
 ];
