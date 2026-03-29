@@ -14,17 +14,17 @@ type CryptoPreview = {
 };
 
 type FxPreview = {
-  pair: string; // USD/UAH
+  pair: string;
   rate: number;
-  change: number; // %
+  change: number;
 };
 
 type MetalPreview = {
-  symbol: string; // XAU/UAH
-  name: string; // Золото
-  price: number; // UAH
-  change: number; // %
-  spark: number[]; // останні N точок
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  spark: number[];
 };
 
 const POLL_MS = 10_000;
@@ -62,18 +62,23 @@ function toPercentChange(prev: number | null, next: number) {
   return ((next - prev) / prev) * 100;
 }
 
+function safeMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function isAbortMessage(msg: string) {
+  return msg.toLowerCase().includes("aborted");
+}
+
 export default function DashboardPage() {
-  // --- CRYPTO (популярні) ---
   const [popularCrypto, setPopularCrypto] = useState<CryptoPreview[]>([]);
   const [popularLoading, setPopularLoading] = useState(true);
   const [popularError, setPopularError] = useState<string | null>(null);
 
-  // --- CRYPTO (топ росту) ---
   const [moversCrypto, setMoversCrypto] = useState<CryptoPreview[]>([]);
   const [moversLoading, setMoversLoading] = useState(true);
   const [moversError, setMoversError] = useState<string | null>(null);
 
-  // --- FX ---
   const [fxRates, setFxRates] = useState<FxPreview[]>([
     { pair: "USD/UAH", rate: 0, change: 0 },
     { pair: "EUR/UAH", rate: 0, change: 0 },
@@ -82,24 +87,19 @@ export default function DashboardPage() {
   const [fxLoading, setFxLoading] = useState(true);
   const [fxError, setFxError] = useState<string | null>(null);
 
-  // --- METALS (НБУ) ---
   const [metals, setMetals] = useState<MetalPreview[]>([]);
   const [metalsLoading, setMetalsLoading] = useState(true);
   const [metalsError, setMetalsError] = useState<string | null>(null);
 
-  // --- updated time ---
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
-  // кеш sparklines (для крипти через Binance klines)
   const sparkCacheRef = useRef<Record<string, number[]>>({});
 
-  // “замки” від паралельних запитів
   const loadingPopularRef = useRef(false);
   const loadingMoversRef = useRef(false);
   const loadingFxRef = useRef(false);
   const loadingMetalsRef = useRef(false);
 
-  // для FX — пам’ятаємо попередні значення, щоб рахувати %
   const fxPrevRef = useRef<Record<string, number>>({});
 
   async function getSpark(symbol: string, signal?: AbortSignal) {
@@ -152,6 +152,12 @@ export default function DashboardPage() {
       }
 
       setPopularCrypto(result);
+      setPopularError(null);
+    } catch (e) {
+      const msg = safeMessage(e);
+      if (!isAbortMessage(msg)) {
+        setPopularError(msg);
+      }
     } finally {
       loadingPopularRef.current = false;
     }
@@ -195,6 +201,12 @@ export default function DashboardPage() {
       }
 
       setMoversCrypto(result);
+      setMoversError(null);
+    } catch (e) {
+      const msg = safeMessage(e);
+      if (!isAbortMessage(msg)) {
+        setMoversError(msg);
+      }
     } finally {
       loadingMoversRef.current = false;
     }
@@ -224,12 +236,17 @@ export default function DashboardPage() {
       }
 
       setFxRates(next);
+      setFxError(null);
+    } catch (e) {
+      const msg = safeMessage(e);
+      if (!isAbortMessage(msg)) {
+        setFxError(msg);
+      }
     } finally {
       loadingFxRef.current = false;
     }
   }
 
-  // ✅ METALS: fetchNbuExchangeSeries -> [{t, v}]
   async function loadMetals(signal?: AbortSignal) {
     if (loadingMetalsRef.current) return;
     loadingMetalsRef.current = true;
@@ -240,10 +257,17 @@ export default function DashboardPage() {
         fetchNbuExchangeSeries({ valcode: "xag", daysBack: 10, signal }),
       ]);
 
-      const build = (rows: { t: number; v: number }[], name: string, symbol: string): MetalPreview | null => {
+      const build = (
+        rows: { t: number; v: number }[],
+        name: string,
+        symbol: string
+      ): MetalPreview | null => {
         if (!rows || rows.length === 0) return null;
 
-        const points = rows.map((r) => Number(r.v)).filter((n) => Number.isFinite(n) && n > 0);
+        const points = rows
+          .map((r) => Number(r.v))
+          .filter((n) => Number.isFinite(n) && n > 0);
+
         if (points.length === 0) return null;
 
         const last = points[points.length - 1];
@@ -256,66 +280,58 @@ export default function DashboardPage() {
       const next: MetalPreview[] = [];
       const gold = build(xau, "Золото", "XAU/UAH");
       const silver = build(xag, "Срібло", "XAG/UAH");
+
       if (gold) next.push(gold);
       if (silver) next.push(silver);
 
       setMetals(next);
+      setMetalsError(null);
+    } catch (e) {
+      const msg = safeMessage(e);
+      if (!isAbortMessage(msg)) {
+        setMetalsError(msg);
+      }
     } finally {
       loadingMetalsRef.current = false;
     }
+  }
+
+  async function refreshAll(signal?: AbortSignal) {
+    await Promise.allSettled([
+      loadPopularCrypto(signal),
+      loadMoversCrypto(signal),
+      loadFx(signal),
+      loadMetals(signal),
+    ]);
+
+    setLastUpdated(Date.now());
   }
 
   useEffect(() => {
     const controller = new AbortController();
     let timerId: number | null = null;
 
-    const safeMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
-    const isAbort = (msg: string) => msg.toLowerCase().includes("aborted");
-
     (async () => {
-      try {
-        setPopularLoading(true);
-        setMoversLoading(true);
-        setFxLoading(true);
-        setMetalsLoading(true);
+      setPopularLoading(true);
+      setMoversLoading(true);
+      setFxLoading(true);
+      setMetalsLoading(true);
 
-        setPopularError(null);
-        setMoversError(null);
-        setFxError(null);
-        setMetalsError(null);
+      setPopularError(null);
+      setMoversError(null);
+      setFxError(null);
+      setMetalsError(null);
 
-        await Promise.all([
-          loadPopularCrypto(controller.signal),
-          loadMoversCrypto(controller.signal),
-          loadFx(controller.signal),
-          loadMetals(controller.signal),
-        ]);
+      await refreshAll(controller.signal);
 
-        setLastUpdated(Date.now());
+      setPopularLoading(false);
+      setMoversLoading(false);
+      setFxLoading(false);
+      setMetalsLoading(false);
 
-        timerId = window.setInterval(async () => {
-          try {
-            await Promise.all([
-              loadPopularCrypto(controller.signal),
-              loadMoversCrypto(controller.signal),
-              loadFx(controller.signal),
-              loadMetals(controller.signal),
-            ]);
-            setLastUpdated(Date.now());
-          } catch (e) {
-            const msg = safeMessage(e);
-            if (isAbort(msg)) return;
-          }
-        }, POLL_MS);
-      } catch (e) {
-        const msg = safeMessage(e);
-        if (!isAbort(msg)) setPopularError(msg);
-      } finally {
-        setPopularLoading(false);
-        setMoversLoading(false);
-        setFxLoading(false);
-        setMetalsLoading(false);
-      }
+      timerId = window.setInterval(async () => {
+        await refreshAll(controller.signal);
+      }, POLL_MS);
     })();
 
     return () => {
@@ -344,7 +360,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="dash-grid-2x2">
-        {/* 1) Популярні криптовалюти */}
         <div className="card">
           <div className="card-head">
             <div>
@@ -363,7 +378,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* 2) FX */}
         <div className="card">
           <div className="card-head">
             <div>
@@ -395,7 +409,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* 3) Крипто “рух” */}
         <div className="card">
           <div className="card-head">
             <div>
@@ -414,7 +427,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* 4) Метали */}
         <div className="card">
           <div className="card-head">
             <div>
@@ -442,7 +454,9 @@ export default function DashboardPage() {
                     <div className="dash-inline">
                       <StatPill value={m.change} />
                       <span className="spark">
-                        <Sparkline points={m.spark.length ? m.spark : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]} />
+                        <Sparkline
+                          points={m.spark.length ? m.spark : [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]}
+                        />
                       </span>
                     </div>
                   </div>
@@ -460,7 +474,6 @@ export default function DashboardPage() {
   );
 }
 
-/** Спільна таблиця для крипти */
 function CryptoTable({ items }: { items: CryptoPreview[] }) {
   return (
     <div className="table">

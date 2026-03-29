@@ -12,18 +12,22 @@ import MetalAssetPage from "../pages/MetalAssetPage";
 
 export const routes: RouteObject[] = [
   { path: "/login", element: <LoginPage /> },
+
   {
     path: "/",
     element: <AppLayout />,
     children: [
       { index: true, element: <DashboardPage /> },
+
       { path: "crypto", element: <CryptoMarketPage /> },
       { path: "crypto/:symbol", element: <CryptoAssetPage /> },
-      { path: "fx", element: <FxPage /> },
       { path: "fx/:base", element: <FxAssetPage /> },
+
+      { path: "fx", element: <FxPage /> },
       { path: "metals", element: <MetalsPage /> },
       { path: "metals/:metal", element: <MetalAssetPage /> },
     ],
   },
+
   { path: "*", element: <NotFoundPage /> },
 ];
