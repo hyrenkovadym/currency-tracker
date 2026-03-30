@@ -14,6 +14,17 @@ const RANGE_MAP: Record<RangeKey, { interval: KlineInterval; limit: number; labe
   "1y": { interval: "1d", limit: 365, label: "1Y" },
 };
 
+const STABLE_TOKENS = new Set([
+  "USDT",
+  "USDC",
+  "FDUSD",
+  "TUSD",
+  "BUSD",
+  "DAI",
+  "USDP",
+  "PYUSD",
+]);
+
 function isAbortError(e: unknown) {
   if (!e) return false;
   if (e instanceof DOMException && e.name === "AbortError") return true;
@@ -21,9 +32,52 @@ function isAbortError(e: unknown) {
   return msg.toLowerCase().includes("aborted");
 }
 
+function splitSymbol(symbol: string) {
+  const knownQuotes = ["USDT", "USDC", "FDUSD", "BUSD", "TUSD", "DAI", "BTC", "ETH", "BNB", "EUR", "TRY"];
+  for (const quote of knownQuotes) {
+    if (symbol.endsWith(quote) && symbol.length > quote.length) {
+      return {
+        base: symbol.slice(0, -quote.length),
+        quote,
+      };
+    }
+  }
+  return { base: symbol, quote: "" };
+}
+
+function isStablePair(symbol: string) {
+  const { base, quote } = splitSymbol(symbol);
+  return STABLE_TOKENS.has(base) && STABLE_TOKENS.has(quote);
+}
+
+function normalizeSeriesForDisplay(
+  symbol: string,
+  input: { time: number; close: number }[]
+): { time: number; close: number }[] {
+  if (!input.length) return input;
+
+  const values = input.map((p) => p.close).filter((v) => Number.isFinite(v) && v > 0);
+  if (values.length < 2) return input;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const relativeSpan = avg > 0 ? (max - min) / avg : 0;
+
+  const stablePair = isStablePair(symbol);
+
+  // Для стейблкоїн-пар робимо лінію рівною, якщо коливання мікроскопічні
+  if (stablePair && relativeSpan <= 0.01) {
+    const anchor = Number(input[input.length - 1]?.close ?? values[values.length - 1] ?? 1);
+    return input.map((p) => ({ ...p, close: anchor }));
+  }
+
+  return input;
+}
+
 export default function CryptoAssetPage() {
   const { symbol: raw } = useParams();
-  const symbol = (raw ?? "").toUpperCase(); // BTCUSDT
+  const symbol = (raw ?? "").toUpperCase();
   const nav = useNavigate();
 
   const [range, setRange] = useState<RangeKey>("24h");
@@ -56,8 +110,10 @@ export default function CryptoAssetPage() {
       setVolume(t.quoteVolume);
 
       const cfg = RANGE_MAP[range];
-      const s = await fetchKlinesSeries(symbol, cfg.interval, cfg.limit, signal);
-      setSeries(s);
+      const rawSeries = await fetchKlinesSeries(symbol, cfg.interval, cfg.limit, signal);
+
+      const normalized = normalizeSeriesForDisplay(symbol, rawSeries);
+      setSeries(normalized);
     } finally {
       lockRef.current = false;
     }
@@ -71,19 +127,19 @@ export default function CryptoAssetPage() {
         setLoading(true);
         await loadAll(controller.signal);
       } catch (e) {
-        if (!isAbortError(e)) setErr(e instanceof Error ? e.message : "Помилка завантаження");
+        if (!isAbortError(e)) {
+          setErr(e instanceof Error ? e.message : "Помилка завантаження");
+        }
       } finally {
         setLoading(false);
       }
     })();
 
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, range]);
 
   const title = useMemo(() => {
     if (!symbol) return "Монета";
-    // як було раніше: показуємо .../USDT
     return symbol.endsWith("USDT") ? `${symbol.replace("USDT", "")} / USDT` : symbol;
   }, [symbol]);
 
@@ -153,9 +209,6 @@ export default function CryptoAssetPage() {
   );
 }
 
-/**
- * Hover (як було): індекс по X, tooltip по реальному часу (openTime)
- */
 function HoverLineChart({ series }: { series: { time: number; close: number }[] }) {
   const w = 1000;
   const h = 260;

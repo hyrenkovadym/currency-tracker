@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "echo 🌍 PROD: https://currency-tracker-vntu.netlify.app/ && vite",
     "server": "nodemon server/index.js",
     "dev:all": "concurrently -k \"npm:dev\" \"npm:server\"",
     "build": "tsc -b && vite build",
