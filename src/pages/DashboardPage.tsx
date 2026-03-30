@@ -3,7 +3,7 @@ import Sparkline from "../components/dashboard/Sparkline";
 import StatPill from "../components/dashboard/StatPill";
 import { fetch24hrTickers, fetchSparkline } from "../services/binance/binance.api";
 import { fetchNbuRates } from "../services/nbu/nbu.api";
-import { fetchNbuExchangeSeries } from "../services/nbu/nbu-exchange.api";
+import { fetchMetalSeries } from "../services/metals/metals.api";
 
 type CryptoPreview = {
   symbol: string;
@@ -155,9 +155,7 @@ export default function DashboardPage() {
       setPopularError(null);
     } catch (e) {
       const msg = safeMessage(e);
-      if (!isAbortMessage(msg)) {
-        setPopularError(msg);
-      }
+      if (!isAbortMessage(msg)) setPopularError(msg);
     } finally {
       loadingPopularRef.current = false;
     }
@@ -204,9 +202,7 @@ export default function DashboardPage() {
       setMoversError(null);
     } catch (e) {
       const msg = safeMessage(e);
-      if (!isAbortMessage(msg)) {
-        setMoversError(msg);
-      }
+      if (!isAbortMessage(msg)) setMoversError(msg);
     } finally {
       loadingMoversRef.current = false;
     }
@@ -239,9 +235,7 @@ export default function DashboardPage() {
       setFxError(null);
     } catch (e) {
       const msg = safeMessage(e);
-      if (!isAbortMessage(msg)) {
-        setFxError(msg);
-      }
+      if (!isAbortMessage(msg)) setFxError(msg);
     } finally {
       loadingFxRef.current = false;
     }
@@ -253,8 +247,8 @@ export default function DashboardPage() {
 
     try {
       const [xau, xag] = await Promise.all([
-        fetchNbuExchangeSeries({ valcode: "xau", daysBack: 10, signal }),
-        fetchNbuExchangeSeries({ valcode: "xag", daysBack: 10, signal }),
+        fetchMetalSeries({ metal: "xau", quote: "UAH", daysBack: 10, signal }),
+        fetchMetalSeries({ metal: "xag", quote: "UAH", daysBack: 10, signal }),
       ]);
 
       const build = (
@@ -288,9 +282,7 @@ export default function DashboardPage() {
       setMetalsError(null);
     } catch (e) {
       const msg = safeMessage(e);
-      if (!isAbortMessage(msg)) {
-        setMetalsError(msg);
-      }
+      if (!isAbortMessage(msg)) setMetalsError(msg);
     } finally {
       loadingMetalsRef.current = false;
     }
@@ -431,7 +423,7 @@ export default function DashboardPage() {
           <div className="card-head">
             <div>
               <div className="card-title">Метали</div>
-              <div className="muted">Джерело: НБУ (інвест. метали)</div>
+              <div className="muted">Джерело: Metals API</div>
             </div>
             <a className="link" href="/metals">Детальніше →</a>
           </div>
@@ -466,7 +458,7 @@ export default function DashboardPage() {
           )}
 
           <div className="muted" style={{ marginTop: 10 }}>
-            Примітка: ціни в UAH, спарклайн — останні 10 днів (НБУ).
+            Примітка: ціни в UAH, спарклайн — останні 10 днів.
           </div>
         </div>
       </div>
