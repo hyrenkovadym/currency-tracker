@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import StatPill from "../components/dashboard/StatPill";
-import { fetchNbuExchangeSeries } from "../services/nbu/nbu-exchange.api";
+import { fetchMetalSeries } from "../services/metals/metals.api";
 
 type MetalCode = "xau" | "xag" | "xpt" | "xpd";
 
@@ -54,8 +54,9 @@ export default function MetalsPage() {
       const metals = Object.keys(METAL_META) as MetalCode[];
 
       const tasks = metals.map(async (key) => {
-        const pts = await fetchNbuExchangeSeries({
-          valcode: key,
+        const pts = await fetchMetalSeries({
+          metal: key,
+          quote: "UAH",
           daysBack: 10,
           signal,
         });
@@ -72,6 +73,10 @@ export default function MetalsPage() {
       const next = (await Promise.all(tasks)).filter(Boolean) as Row[];
       setRows(next);
       setLastUpdated(Date.now());
+    } catch (e) {
+      if (!isAbortError(e)) {
+        setErr(e instanceof Error ? e.message : "Помилка");
+      }
     } finally {
       lockRef.current = false;
     }
@@ -95,8 +100,6 @@ export default function MetalsPage() {
             }
           }
         }, POLL_MS);
-      } catch (e) {
-        if (!isAbortError(e)) setErr(e instanceof Error ? e.message : "Помилка");
       } finally {
         setLoading(false);
       }
@@ -116,7 +119,7 @@ export default function MetalsPage() {
         <div>
           <div className="h1">Метали</div>
           <div className="muted">
-            Джерело: НБУ (інвест. метали) · UAH
+            Джерело: Metals API · UAH
             {lastUpdated ? (
               <>
                 {" "}
@@ -160,7 +163,7 @@ export default function MetalsPage() {
 
         {!loading && view.length === 0 ? (
           <div className="muted" style={{ padding: 14 }}>
-            Завантаження... (JSON).
+            Дані відсутні.
           </div>
         ) : null}
       </div>
