@@ -56,7 +56,6 @@ export default function MetalsPage() {
       const tasks = metals.map(async (key) => {
         const pts = await fetchMetalSeries({
           metal: key,
-          quote: "UAH",
           daysBack: 10,
           signal,
         });

@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import StatPill from "../components/dashboard/StatPill";
-import { fetchNbuExchangeSeries } from "../services/nbu/nbu-exchange.api";
+import { fetchMetalSeries } from "../services/metals/metals.api";
 
 type MetalCode = "xau" | "xag" | "xpt" | "xpd";
 type RangeKey = "10d" | "30d" | "90d" | "1y";
@@ -59,8 +59,8 @@ export default function MetalAssetPage() {
       setErr(null);
 
       const cfg = RANGE_DAYS[range];
-      const pts = await fetchNbuExchangeSeries({
-        valcode: metal,
+      const pts = await fetchMetalSeries({
+        metal: metal,
         daysBack: cfg.daysBack,
         signal,
       });

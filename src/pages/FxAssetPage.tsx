@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import StatPill from "../components/dashboard/StatPill";
-import { fetchNbuRates } from "../services/nbu/nbu.api";
-import { fetchNbuExchangeSeries } from "../services/nbu/nbu-exchange.api";
+import { fetchNbuRates, fetchNbuSeries } from "../services/nbu/nbu.api";
 
 type RangeKey = "7d" | "30d" | "1y";
 
@@ -46,7 +45,6 @@ export default function FxAssetPage() {
       try {
         setErr(null);
 
-        // 1) список валют (spot)
         const rates = await fetchNbuRates(controller.signal);
         const all = ["uah", ...Array.from(rates.keys()).map((x) => x.toLowerCase())]
           .filter((v, i, a) => a.indexOf(v) === i)
@@ -54,7 +52,6 @@ export default function FxAssetPage() {
 
         setCcList(all);
 
-        // 2) поточний курс base/quote через UAH
         const baseRow = rates.get(base.toUpperCase());
         const quoteRow = quote === "uah" ? null : rates.get(quote.toUpperCase());
 
@@ -70,47 +67,34 @@ export default function FxAssetPage() {
         setSpot(nextSpot);
         setDeltaPoll(pollDelta);
 
-        const dateStr = (baseRow as any)?.exchangedate ?? (baseRow as any)?.date ?? null;
+        const dateStr = (baseRow as any)?.exchangedate ?? null;
         setNbuDate(dateStr ? String(dateStr) : "—");
       } catch (e) {
         if (!isAbortError(e)) setErr(e instanceof Error ? e.message : "Помилка");
       }
 
-      // 3) series (через exchange_site -> через proxy)
       try {
         setLoading(true);
         setErr(null);
 
         const days = RANGE[range].days;
 
-        const baseS =
-          base === "uah"
-            ? []
-            : await fetchNbuExchangeSeries({ valcode: base, daysBack: days, signal: controller.signal });
+        const merged = await fetchNbuSeries({
+          base: base.toUpperCase(),
+          quote: quote.toUpperCase(),
+          daysBack: days,
+          signal: controller.signal,
+        });
 
-        const quoteS =
-          quote === "uah"
-            ? []
-            : await fetchNbuExchangeSeries({ valcode: quote, daysBack: days, signal: controller.signal });
+        const normalized = merged
+          .map((p) => ({ t: Number(p.ts), v: Number(p.rate) }))
+          .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v) && p.v > 0);
 
-        const qMap = new Map<number, number>(quoteS.map((p) => [p.t, p.v]));
+        setSeries(normalized);
 
-        const merged =
-          quote === "uah"
-            ? baseS
-            : (baseS
-                .map((p) => {
-                  const q = qMap.get(p.t);
-                  if (!q || q <= 0) return null;
-                  return { t: p.t, v: p.v / q };
-                })
-                .filter(Boolean) as { t: number; v: number }[]);
-
-        setSeries(merged);
-
-        if (merged.length >= 2) {
-          const first = merged[0].v;
-          const last = merged[merged.length - 1].v;
+        if (normalized.length >= 2) {
+          const first = normalized[0].v;
+          const last = normalized[normalized.length - 1].v;
           setDeltaRange(first ? ((last - first) / first) * 100 : 0);
         } else {
           setDeltaRange(0);
@@ -213,11 +197,6 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-/**
- * ✅ ВАЖЛИВО:
- * - координати миші конвертуємо в SVG-координати через getScreenCTM().inverse()
- * - тоді вертикальна лінія буде 1:1 під курсором (без зсувів від масштабування/letterbox)
- */
 function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
   const w = 1000;
   const h = 260;
@@ -227,12 +206,8 @@ function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-
-  // позиція tooltip у пікселях відносно wrap (щоб tooltip йшов рівно за мишкою)
   const [tipLeftPx, setTipLeftPx] = useState<number>(0);
   const [tipTopPx, setTipTopPx] = useState<number>(0);
-
-  // X лінії у координатах viewBox
   const [hoverX, setHoverX] = useState<number>(pad);
 
   if (!points || points.length < 2) {
@@ -264,12 +239,10 @@ function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
     const wrap = wrapRef.current;
     if (!svg || !wrap) return;
 
-    // 1) tooltip в пікселях (щоб не було розсинхрону)
     const wrapRect = wrap.getBoundingClientRect();
     setTipLeftPx(e.clientX - wrapRect.left);
     setTipTopPx(e.clientY - wrapRect.top);
 
-    // 2) точне переведення clientX -> SVG viewBox X
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
@@ -279,7 +252,6 @@ function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
 
     const svgPt = pt.matrixTransform(ctm.inverse());
 
-    // clamp в межах поля графіка
     const x = clamp(svgPt.x, pad, w - pad);
     setHoverX(x);
 
@@ -323,12 +295,10 @@ function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
         onMouseMove={onMove}
         onMouseLeave={onLeave}
       >
-        {/* path не має ловити hover */}
         <path d={d} className="big-chart-line" style={{ pointerEvents: "none" }} />
 
         {hoverIdx != null ? (
           <>
-            {/* ✅ вертикальна лінія 1:1 під мишкою */}
             <line
               x1={hoverX}
               y1={pad}
@@ -338,7 +308,6 @@ function HoverLineChart({ points }: { points: { t: number; v: number }[] }) {
               style={{ pointerEvents: "none" }}
             />
 
-            {/* крапка на найближчій точці */}
             {dot ? (
               <circle
                 cx={dot.x}

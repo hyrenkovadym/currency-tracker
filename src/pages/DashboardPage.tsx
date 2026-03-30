@@ -247,8 +247,8 @@ export default function DashboardPage() {
 
     try {
       const [xau, xag] = await Promise.all([
-        fetchMetalSeries({ metal: "xau", quote: "UAH", daysBack: 10, signal }),
-        fetchMetalSeries({ metal: "xag", quote: "UAH", daysBack: 10, signal }),
+        fetchMetalSeries({ metal: "xau", daysBack: 10, signal }),
+        fetchMetalSeries({ metal: "xag", daysBack: 10, signal }),
       ]);
 
       const build = (
